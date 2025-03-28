@@ -12,7 +12,7 @@ const io = new Server(server, {
   },
 });
 
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 3000;
 
 // Servir os arquivos estáticos do jogo (HTML, CSS, JS do cliente)
 app.use(express.static(path.join(__dirname, "public")));
