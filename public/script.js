@@ -113,9 +113,9 @@ function init() {
 // --- Conexão com Servidor WebSocket ---
 function connectToServer() {
   // A URL é omitida, pois por padrão conecta ao mesmo host/porta que serviu a página
-  socket = io({
-    reconnectionAttempts: 5, // Tenta reconectar algumas vezes
-    reconnectionDelay: 1000, // Espera 1s entre tentativas
+  socket = io("https://game-test-gemini-20-pro-production.up.railway.app/", {
+    reconnectionAttempts: 5,
+    reconnectionDelay: 1000,
   });
 
   // --- Tratamento de Eventos do Socket.IO ---
