@@ -1,0 +1,38 @@
+body {
+  margin: 0;
+  overflow: hidden; /* Impede barras de rolagem */
+  font-family: Arial, sans-serif;
+  color: white;
+  background-color: #000; /* Fundo preto caso o canvas não carregue */
+}
+
+canvas {
+  display: block; /* Remove espaço extra abaixo do canvas */
+}
+
+#info {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background-color: rgba(0, 0, 0, 0.6);
+  padding: 5px 10px;
+  border-radius: 5px;
+  z-index: 10; /* Garante que fique sobre o canvas */
+  display: block; /* Começa visível */
+}
+
+#message {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 3em;
+  color: red;
+  text-shadow: 2px 2px 4px black;
+  display: none; /* Escondido inicialmente */
+  text-align: center;
+  z-index: 10;
+  background-color: rgba(0, 0, 0, 0.5);
+  padding: 20px;
+  border-radius: 10px;
+}
