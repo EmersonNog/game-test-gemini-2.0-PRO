@@ -1,4 +1,6 @@
 import * as THREE from "three";
+import { AnimationMixer } from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
 // --- Variáveis Globais ---
 let scene, camera, renderer, clock;
@@ -19,7 +21,7 @@ let remotePlayers = {}; // { id: { group: THREE.Group, targetPosition: Vector3, 
 let remoteBullets = {}; // { id: { mesh: THREE.Mesh, velocity: Vector3, startTime: number, life: number, ownerId: string } }
 
 // --- Constantes ---
-const CAMERA_OFFSET = new THREE.Vector3(0, 8, -20);
+const CAMERA_OFFSET = new THREE.Vector3(0, 12, -70);
 const PLANE_SPEED = 25.0;
 const BULLET_SPEED = 80.0;
 const GROUND_LEVEL = 0;
@@ -165,7 +167,7 @@ function connectToServer() {
     infoElement.innerText = `Conectado como ${localPlayerId.substring(
       0,
       4
-    )} (Setas/AD: Mover, Espaço: Atirar)`;
+    )} (Setas / AD: Mover, Espaço: Atirar)`;
 
     // Criar/Atualizar todos os jogadores recebidos do servidor
     for (const id in data.players) {
@@ -392,97 +394,82 @@ function connectToServer() {
         playerData.rotation.z,
         playerData.rotation.w
       );
-      // Reseta alvos de interpolação para evitar pulo
       remote.targetPosition.copy(remote.group.position);
       remote.targetQuaternion.copy(remote.group.quaternion);
     }
   });
 }
 
-// --- Criação dos Objetos ---
-
+const loader = new GLTFLoader();
+const airplaneModelUrl = "./assets/airplane.glb";
 function createPlayer(id, playerData, isLocal) {
-  const playerGroup = new THREE.Group();
+  loader.load(
+    airplaneModelUrl,
+    (gltf) => {
+      const model = gltf.scene;
 
-  // Cores diferentes para jogador local e remotos
-  const bodyColor = isLocal ? 0xaaaaaa : 0x6666ff; // Cinza vs Azul
-  const wingColor = isLocal ? 0xdd0000 : 0xffaa00; // Vermelho vs Laranja
+      const playerGroup = new THREE.Group();
 
-  const bodyMat = new THREE.MeshStandardMaterial({
-    color: bodyColor,
-    metalness: 0.5,
-    roughness: 0.6,
-  });
-  const bodyGeo = new THREE.BoxGeometry(2, 0.8, 5);
-  const body = new THREE.Mesh(bodyGeo, bodyMat);
-  body.castShadow = true;
-  body.receiveShadow = true;
-  playerGroup.add(body);
+      model.rotation.y = Math.PI / 2;
+      model.scale.set(0.3, 0.3, 0.3);
+      playerGroup.add(model);
 
-  const wingMat = new THREE.MeshStandardMaterial({
-    color: wingColor,
-    metalness: 0.4,
-    roughness: 0.7,
-  });
-  const wingGeo = new THREE.BoxGeometry(8, 0.2, 1.5);
-  const wingL = new THREE.Mesh(wingGeo, wingMat);
-  wingL.position.set(-4, 0, -0.5);
-  wingL.castShadow = true;
-  playerGroup.add(wingL);
-  const wingR = wingL.clone();
-  wingR.position.x = 4;
-  playerGroup.add(wingR);
+      if (gltf.animations && gltf.animations.length > 0) {
+        const mixer = new AnimationMixer(playerGroup);
+        gltf.animations.forEach((clip) => {
+          mixer.clipAction(clip).play();
+        });
+        playerGroup.userData.mixer = mixer;
+      }
 
-  const tailVGeo = new THREE.BoxGeometry(0.2, 1.5, 1);
-  const tailV = new THREE.Mesh(tailVGeo, wingMat);
-  tailV.position.set(0, 0.7, 2);
-  tailV.castShadow = true;
-  playerGroup.add(tailV);
+      playerGroup.traverse((child) => {
+        if (child.isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+        }
+      });
 
-  const tailHGeo = new THREE.BoxGeometry(3, 0.2, 0.8);
-  const tailH = new THREE.Mesh(tailHGeo, wingMat);
-  tailH.position.set(0, 0.2, 2.2);
-  tailH.castShadow = true;
-  playerGroup.add(tailH);
+      playerGroup.position.set(
+        playerData.position.x,
+        playerData.position.y,
+        playerData.position.z
+      );
 
-  // Definir posição e rotação iniciais do servidor
-  playerGroup.position.set(
-    playerData.position.x,
-    playerData.position.y,
-    playerData.position.z
-  );
-  if (playerData.rotation) {
-    playerGroup.quaternion.set(
-      playerData.rotation.x,
-      playerData.rotation.y,
-      playerData.rotation.z,
-      playerData.rotation.w
-    );
-  }
+      if (playerData.rotation) {
+        playerGroup.quaternion.set(
+          playerData.rotation.x,
+          playerData.rotation.y,
+          playerData.rotation.z,
+          playerData.rotation.w
+        );
+      }
 
-  // Define visibilidade inicial baseada no estado 'isDead' do servidor
-  playerGroup.visible = !playerData.isDead;
-  playerGroup.userData.playerId = id; // Guarda o ID no userData para referência
+      playerGroup.visible = !playerData.isDead;
+      playerGroup.userData.playerId = id;
+      scene.add(playerGroup);
 
-  scene.add(playerGroup);
-
-  if (isLocal) {
-    player = playerGroup; // Referência global para o jogador local
-    isGameOver = playerData.isDead; // Sincroniza estado inicial de game over
-    resetPlayerState(); // Reseta taxas de rotação locais
-    if (isGameOver) {
-      messageElement.innerText = "Você está aguardando respawn...";
-      messageElement.style.display = "block";
+      if (isLocal) {
+        player = playerGroup;
+        isGameOver = playerData.isDead;
+        resetPlayerState();
+        if (isGameOver) {
+          messageElement.innerText = "Você está aguardando respawn...";
+          messageElement.style.display = "block";
+        }
+      } else {
+        remotePlayers[id] = {
+          group: playerGroup,
+          targetPosition: playerGroup.position.clone(),
+          targetQuaternion: playerGroup.quaternion.clone(),
+          lastUpdateTime: Date.now(),
+        };
+      }
+    },
+    undefined,
+    (error) => {
+      console.error("Erro ao carregar modelo do avião:", error);
     }
-  } else {
-    // Armazena dados para jogadores remotos, incluindo alvos para interpolação
-    remotePlayers[id] = {
-      group: playerGroup,
-      targetPosition: playerGroup.position.clone(),
-      targetQuaternion: playerGroup.quaternion.clone(),
-      lastUpdateTime: Date.now(),
-    };
-  }
+  );
 }
 
 function createGround() {
@@ -609,7 +596,7 @@ function createRemoteBullet(bulletData) {
   // Evita duplicar se a notificação chegar e a bala já existir
   if (remoteBullets[bulletData.id]) return;
 
-  // console.log(`Criando bala remota ${bulletData.id} de ${bulletData.ownerId}`);
+  // console.log(Criando bala remota ${bulletData.id} de ${bulletData.ownerId});
   const bulletMat = new THREE.MeshBasicMaterial({ color: 0xff8800 }); // Laranja para remota
   const bulletGeo = new THREE.SphereGeometry(0.3, 8, 8);
   const bulletMesh = new THREE.Mesh(bulletGeo, bulletMat);
@@ -637,7 +624,7 @@ function createRemoteBullet(bulletData) {
 // Remove bala REMOTA
 function removeRemoteBullet(bulletId) {
   if (remoteBullets[bulletId]) {
-    // console.log(`Removendo bala remota ${bulletId}`);
+    // console.log(Removendo bala remota ${bulletId});
     scene.remove(remoteBullets[bulletId].mesh);
     // TODO: Adicionar dispose se necessário
     delete remoteBullets[bulletId];
@@ -932,7 +919,7 @@ function updateRemotePlayers(deltaTime) {
     } else if (remote.group && remote.group.visible) {
       // *** LOG OPCIONAL: Sem update recente ***
       // Descomente se quiser ver quando a interpolação para por falta de updates
-      // console.log(`Skipping interpolation for ${id.substring(0,4)} (no recent update). Last update: ${now - remote.lastUpdateTime}ms ago`);
+      // console.log(Skipping interpolation for ${id.substring(0,4)} (no recent update). Last update: ${now - remote.lastUpdateTime}ms ago);
     }
   }
 }
@@ -1166,6 +1153,10 @@ function animate() {
     }
     // Câmera segue mesmo se estiver morto (para ver explosão/respawn)
     updateCamera(deltaTime);
+  }
+
+  if (player && player.userData.mixer) {
+    player.userData.mixer.update(deltaTime);
   }
 
   // Interpola jogadores remotos
